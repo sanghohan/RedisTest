@@ -2,19 +2,27 @@ package org.example.redistest
 
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import org.redisson.api.RLock
+import org.redisson.api.RedissonClient
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.redis.core.StringRedisTemplate
+import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 import kotlin.test.Test
 
 @SpringBootTest(classes = [TestRedisConfiguration::class])
-class RedisConcurrencyTest {
+class RedisConcurrencyTest(
+
+) {
     @Autowired
     private lateinit var stringRedisTemplate: StringRedisTemplate
 
     @Autowired
     private lateinit var concurrentTaskExecutor: ConcurrentTaskExecutor
+
+    @Autowired
+    private lateinit var redissonClient: RedissonClient
 
     private val numberOfThreads = 10
     private val repeatCountPerThread = 1000
@@ -32,6 +40,44 @@ class RedisConcurrencyTest {
         // then
         count shouldNotBe numberOfThreads * repeatCountPerThread
         println(count)
+    }
+
+    @Test
+    fun `Redisson을 사용하면?`() {
+
+        // given
+        var count = 0
+
+        // when
+        concurrentTaskExecutor.runConcurrentTasks(numberOfThreads, repeatCountPerThread) {
+
+            val lock: RLock = redissonClient.getLock("count_lock")
+            val isLocked: Boolean = try {
+                // waitTime: 락을 기다리는 최대 시간
+                // leaseTime: 락이 자동으로 해제되기까지의 시간
+                lock.tryLock(1, 2, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw RuntimeException("Lock 획득 중 인터럽트 발생", e)
+            }
+
+            if (isLocked) {
+                try {
+                    count++
+
+                } finally {
+                    lock.unlock()
+                }
+            } else {
+                throw RuntimeException("Lock 획득 실패")
+            }
+        }
+
+        println("count = $count")
+
+        // then
+        count shouldNotBe numberOfThreads * repeatCountPerThread
+
     }
 
     @Test
