@@ -1,0 +1,11 @@
+spring:
+  profiles:
+    active: local
+  application:
+    name: redisTest
+
+logging:
+  config: classpath:logging/logback-spring.xml
+  level:
+    root: INFO
+    org.example: INFO
